@@ -2,7 +2,6 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "buildwhatever",
-  "basePath": "/docs",
   "colors": {
     "primary": "#7C3AED",
     "light": "#A78BFA",
