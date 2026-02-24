@@ -1,0 +1,293 @@
+---
+title: Integrations
+description: "Connect GitHub, Slack, Sentry, email, and more to automatically capture feedback and errors as tasks."
+---
+
+# Integrations
+
+buildwhatever integrates with your existing tools to automatically capture feedback, bug reports, and errors as actionable tasks.
+
+## How Integrations Work
+
+All integrations use webhooks. When an event occurs (a new GitHub issue, a Slack message, a Sentry error), the source sends data to your buildwhatever webhook URL. buildwhatever then:
+
+1. **Authenticates** the request using your webhook token
+2. **Classifies** the content as bug or feedback
+3. **Creates a task** with appropriate priority, tags, and metadata
+4. **Deduplicates** to avoid creating duplicate tasks
+
+### Webhook URL Format
+
+```
+https://app.buildwhatever.dev/api/webhooks/{integration}?token={webhook_secret}
+```
+
+---
+
+## GitHub Issues
+
+Automatically create tasks from GitHub issues. Great for tracking bug reports and feature requests.
+
+### Setup
+
+1. Go to **Settings > Integrations** in buildwhatever
+2. Click **Enable** on GitHub integration
+3. Copy your webhook URL and secret
+4. In your GitHub repo, go to **Settings > Webhooks > Add webhook**
+5. Configure:
+   - **Payload URL:** your buildwhatever webhook URL
+   - **Content type:** `application/json`
+   - **Events:** select **Issues** (and optionally **Issue comments**)
+
+### Classification
+
+Issues are classified as **bugs** if labels or content contain: `bug`, `error`, `crash`, `fix`, `broken`, `fail`, `issue`, `exception`. Everything else is classified as **feedback**.
+
+### Priority Mapping
+
+| GitHub Labels | buildwhatever Priority |
+|---------------|----------------------|
+| `critical`, `urgent`, `p0`, `p1` | High |
+| `p2`, `medium-priority` | Medium |
+| `low-priority`, `p3`, `minor` | Low |
+| No priority labels | Default (High for bugs) |
+
+### Sync Behavior
+
+| GitHub Event | buildwhatever Action |
+|--------------|---------------------|
+| Issue opened | Create new task |
+| Issue closed | Mark task as done |
+| Issue reopened | Reopen task |
+
+---
+
+## Email
+
+Turn support emails into tasks automatically. Works with Mailgun, SendGrid, Postmark, or any email provider with inbound parsing.
+
+### Setup
+
+1. Go to **Settings > Integrations** in buildwhatever
+2. Click **Enable** on Email integration
+3. Select your email provider
+4. Copy your webhook URL
+5. Configure your email provider to forward to that URL
+
+**Mailgun:**
+- Go to Sending > Routes
+- Create route matching your support address (e.g., `bugs@yourdomain.com`)
+- Forward to your buildwhatever webhook URL
+
+**SendGrid:**
+- Go to Settings > Inbound Parse
+- Add your domain and buildwhatever webhook URL
+
+**Postmark:**
+- Go to your Server > Inbound
+- Set the webhook URL to your buildwhatever endpoint
+
+### Configuration Options
+
+- **Allowed senders** — restrict to specific domains (e.g., `*@company.com`)
+- **Default priority** — set priority for new tasks
+- **Auto-classify** — enable/disable bug vs feedback classification
+
+---
+
+## Slack
+
+Capture feedback from Slack channels and create tasks automatically.
+
+### Setup
+
+1. Create a Slack App at [api.slack.com/apps](https://api.slack.com/apps)
+2. Enable **Event Subscriptions** and set the Request URL to your buildwhatever webhook
+3. Subscribe to bot events: `message.channels`, `message.groups`, `reaction_added`
+4. Install the app to your workspace
+5. In buildwhatever, go to **Settings > Integrations**, enable Slack, and enter your Slack Signing Secret
+
+### Configuration
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Allowed Channels** | Channel IDs to monitor | All |
+| **Trigger Words** | Keywords that create tasks | `feedback`, `bug`, `feature request` |
+| **Trigger Reactions** | Emoji that create tasks | `:eyes:`, `:memo:`, `:bug:` |
+| **Default Priority** | Priority for new tasks | Medium |
+
+A task is created when a message contains a trigger word or someone adds a trigger reaction to a message.
+
+---
+
+## Sentry
+
+Automatically create tasks from Sentry errors with deduplication and error count tracking.
+
+### Setup
+
+1. In buildwhatever, go to **Settings > Integrations** and enable Sentry
+2. Copy your webhook URL
+3. In Sentry, go to **Settings > Integrations > Webhooks**
+4. Add a new webhook with your buildwhatever URL
+5. Enable for: `issue.created`, `issue.resolved`, `issue.unresolved`
+
+### Sync Behavior
+
+| Sentry Event | buildwhatever Action |
+|--------------|---------------------|
+| `issue.created` | Create task (or increment count if duplicate) |
+| `issue.resolved` | Mark task as done |
+| `issue.unresolved` | Reopen task |
+
+### Priority Mapping
+
+| Sentry Level | Priority |
+|--------------|---------|
+| `fatal` | High |
+| `error` | High |
+| `warning` | Medium |
+| `info` | Low |
+
+---
+
+## Browser Extension
+
+Capture tasks from any webpage using the Chrome/Firefox extension.
+
+### Features
+
+- **Quick capture** — `Ctrl+Shift+T` / `Cmd+Shift+T`
+- **Page context** — automatically captures URL, title, and selected text
+- **Screenshot** — capture visible area or selection
+- **Right-click menu** — "Add to buildwhatever" on any text selection
+
+### Setup
+
+1. Install from the Chrome Web Store or Firefox Add-ons *(coming soon)*
+2. Click the extension icon and log in
+3. Start capturing
+
+---
+
+## VS Code Extension
+
+Manage tasks directly from VS Code.
+
+### Features
+
+- **Task panel** in the sidebar
+- **Quick add** — `Ctrl+Shift+P` > "buildwhatever: Add Task"
+- **TODO scanning** — create tasks from `TODO`/`FIXME` comments
+- **Diagnostics** — create tasks from compiler errors
+- **Status bar** — see task count at a glance
+
+### Setup
+
+```bash
+code --install-extension buildwhatever.buildwhatever-vscode
+```
+
+Run **"buildwhatever: Login"** from the command palette to authenticate.
+
+---
+
+## CLI
+
+Full task management from your terminal.
+
+### Installation
+
+```bash
+npm install -g @buildwhatever/cli
+```
+
+### Authentication
+
+```bash
+buildwhatever login --browser
+```
+
+### Commands
+
+```bash
+# Task management
+buildwhatever add "Fix login bug" --priority high --tag backend
+buildwhatever list                    # Show all tasks
+buildwhatever list --in-progress     # Show in-progress tasks
+buildwhatever done <task-id>         # Mark task complete
+buildwhatever start <task-id>        # Start working on task
+
+# With subtasks
+buildwhatever add "Implement feature" --subtasks "Design API" "Write tests" "Implement"
+
+# Configuration
+buildwhatever config                 # View config
+buildwhatever config set default_project my-project
+```
+
+---
+
+## MCP Server
+
+The Model Context Protocol (MCP) server lets AI assistants like Claude manage your tasks.
+
+### Setup with Claude Desktop
+
+Add to your Claude Desktop config:
+
+```json
+{
+  "mcpServers": {
+    "buildwhatever": {
+      "command": "npx",
+      "args": ["@buildwhatever/mcp-server"],
+      "env": {}
+    }
+  }
+}
+```
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `get_tasks` | List tasks with filters |
+| `create_task` | Create a new task |
+| `update_task` | Modify a task |
+| `complete_task` | Mark task as done |
+| `start_task` | Start working on task |
+| `get_inbox` | View errors and feedback |
+| `search_tasks` | Search by title |
+
+### Example Prompts
+
+- "What's on my task list?"
+- "Create a task to fix the login bug, high priority"
+- "What errors came in from Sentry?"
+- "Mark the current task complete"
+
+---
+
+## Troubleshooting
+
+### Webhook Not Receiving Events
+
+1. Verify the URL format includes your token: `https://app.buildwhatever.dev/api/webhooks/{type}?token=YOUR_TOKEN`
+2. Test the endpoint by visiting the URL in your browser
+3. Check webhook logs in **Settings > Integrations > View Logs**
+4. If using signature verification, make sure secrets match
+
+### Tasks Not Being Created
+
+1. Confirm the integration is enabled in **Settings > Integrations**
+2. Check your filters (some integrations filter by level, sender, etc.)
+3. Check for duplicates — tasks with the same external ID update existing tasks instead of creating new ones
+
+### Authentication Issues
+
+**CLI:** Run `buildwhatever logout` then `buildwhatever login --browser`
+
+**Browser Extension:** Click the extension icon > Logout > Re-authenticate
+
+**MCP Server:** Delete `~/.buildwhatever` and restart Claude Desktop
