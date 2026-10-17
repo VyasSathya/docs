@@ -1,0 +1,314 @@
+---
+title: API Reference
+description: "Webhook endpoints, authentication, rate limits, and error codes for the buildwhatever API."
+---
+
+# API Reference
+
+This page covers the webhook API endpoints, authentication, rate limits, and error handling for buildwhatever integrations.
+
+## Authentication
+
+### Webhook Authentication
+
+All webhook endpoints use token-based authentication via query parameter:
+
+```
+https://app.buildwhatever.dev/api/webhooks/{integration}?token={webhook_secret}
+```
+
+Your `webhook_secret` is generated when you enable an integration. Find it in **Settings > Integrations > {Integration Name} > Webhook Secret**.
+
+### Signature Verification (Optional)
+
+Some integrations support HMAC signature verification for additional security:
+
+- **GitHub:** Verify the `X-Hub-Signature-256` header
+- **Slack:** Verify the `X-Slack-Signature` header
+- **Sentry:** Verify the `Sentry-Hook-Signature` header
+
+### API Token Authentication
+
+For direct API calls (not webhooks), use bearer token authentication:
+
+```bash
+curl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  https://app.buildwhatever.dev/api/tasks
+```
+
+Access tokens are obtained via the OAuth flow used by the CLI and extensions.
+
+---
+
+## Webhook Endpoints
+
+### GitHub — `POST /api/webhooks/github`
+
+**Query Parameters:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `token` | Yes | Your webhook secret |
+
+**Headers:**
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Hub-Signature-256` | No | HMAC signature |
+| `X-GitHub-Event` | Yes | `issues` or `issue_comment` |
+
+**Response:**
+```json
+{
+  "success": true,
+  "task_id": "uuid",
+  "type": "bug",
+  "message": "Created bug task from GitHub issue"
+}
+```
+
+### Email — `POST /api/webhooks/email`
+
+**Query Parameters:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `token` | Yes | Your webhook secret |
+| `provider` | No | `mailgun`, `sendgrid`, `postmark`, or `generic` |
+
+Accepts `application/json`, `multipart/form-data`, and `application/x-www-form-urlencoded`.
+
+### Slack — `POST /api/webhooks/slack`
+
+**Query Parameters:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `token` | Yes | Your webhook secret |
+
+**Headers:**
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Slack-Request-Timestamp` | No | Request timestamp |
+| `X-Slack-Signature` | No | HMAC signature |
+
+Handles `url_verification` challenges automatically.
+
+### Sentry — `POST /api/webhooks/sentry`
+
+**Query Parameters:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `token` | Yes | Your webhook secret |
+
+**Headers:**
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `Sentry-Hook-Resource` | Yes | `issue` |
+| `Sentry-Hook-Signature` | No | HMAC signature |
+
+**Supported actions:** `created`, `resolved`, `unresolved`, `assigned`, `archived`
+
+---
+
+## Testing Webhooks
+
+You can test your configuration with `curl`:
+
+```bash
+# Test GitHub webhook
+curl -X POST \
+  "https://app.buildwhatever.dev/api/webhooks/github?token=YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "X-GitHub-Event: issues" \
+  -d '{
+    "action": "opened",
+    "issue": {
+      "id": 1,
+      "number": 1,
+      "title": "Test Issue",
+      "body": "This is a test issue",
+      "html_url": "https://github.com/test/repo/issues/1",
+      "labels": []
+    },
+    "repository": {
+      "name": "test-repo",
+      "full_name": "user/test-repo"
+    }
+  }'
+```
+
+```bash
+# Test Sentry webhook
+curl -X POST \
+  "https://app.buildwhatever.dev/api/webhooks/sentry?token=YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Sentry-Hook-Resource: issue" \
+  -d '{
+    "action": "created",
+    "data": {
+      "issue": {
+        "id": "test-123",
+        "shortId": "TEST-1",
+        "title": "Test Error",
+        "culprit": "test.js",
+        "permalink": "https://sentry.io/test",
+        "level": "error",
+        "project": {
+          "name": "test-project",
+          "slug": "test-project",
+          "platform": "javascript"
+        },
+        "count": "1",
+        "userCount": 1,
+        "firstSeen": "2026-01-11T00:00:00Z",
+        "lastSeen": "2026-01-11T00:00:00Z"
+      }
+    }
+  }'
+```
+
+---
+
+## Task Object
+
+```typescript
+interface Task {
+  id: string;
+  user_id: string;
+  title: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+
+  // Content
+  description?: string;
+  notes?: string;
+  notes_format: 'html' | 'markdown';
+
+  // Status
+  status: 'todo' | 'in_progress' | 'review' | 'done' | 'paused' | 'archived';
+  completed: boolean;
+  completed_at?: string;
+
+  // Scheduling
+  due_date?: string;
+  priority: 'none' | 'low' | 'medium' | 'high';
+
+  // Context
+  project_tag?: string;
+  source_type?: TaskSourceType;
+
+  // Integration metadata
+  github_issue_id?: number;
+  github_issue_number?: number;
+  github_repo?: string;
+  github_url?: string;
+  email_from?: string;
+  email_subject?: string;
+  slack_channel?: string;
+  slack_user?: string;
+  sentry_issue_id?: string;
+  sentry_project?: string;
+  sentry_error_count?: number;
+  sentry_level?: string;
+  sentry_url?: string;
+
+  // Relations
+  tags?: Tag[];
+  subtasks_json?: InlineSubtask[];
+}
+```
+
+### Source Types
+
+```typescript
+type TaskSourceType =
+  | 'manual'
+  | 'github_bug'
+  | 'github_feedback'
+  | 'email_bug'
+  | 'email_feedback'
+  | 'slack_bug'
+  | 'slack_feedback'
+  | 'sentry_error'
+  | 'browser_extension'
+  | 'vscode_extension'
+  | 'cli'
+  | 'mcp';
+```
+
+---
+
+## Rate Limits
+
+### Webhook Rate Limits
+
+| Endpoint | Limit | Window |
+|----------|-------|--------|
+| `/api/webhooks/github` | 100 requests | 1 minute |
+| `/api/webhooks/email` | 50 requests | 1 minute |
+| `/api/webhooks/slack` | 100 requests | 1 minute |
+| `/api/webhooks/sentry` | 100 requests | 1 minute |
+
+### API Rate Limits
+
+| Endpoint | Limit | Window |
+|----------|-------|--------|
+| Task CRUD | 1,000 requests | 1 hour |
+| Search | 100 requests | 1 minute |
+
+**Rate limit headers:**
+```
+X-RateLimit-Remaining: 99
+Retry-After: 60
+```
+
+When rate limited, you'll receive a `429 Too Many Requests` response:
+
+```json
+{
+  "error": "Rate limit exceeded. Try again later."
+}
+```
+
+---
+
+## Error Responses
+
+All errors follow this format:
+
+```json
+{
+  "error": "Short error description",
+  "message": "Detailed error message (optional)",
+  "code": "ERROR_CODE (optional)"
+}
+```
+
+### Error Codes
+
+| Status | Code | Description |
+|--------|------|-------------|
+| `400` | `INVALID_PAYLOAD` | Request body is malformed |
+| `401` | `MISSING_TOKEN` | No authentication token provided |
+| `401` | `INVALID_TOKEN` | Token is invalid or expired |
+| `401` | `INVALID_SIGNATURE` | Webhook signature verification failed |
+| `403` | `INTEGRATION_DISABLED` | Integration is not enabled |
+| `404` | `NOT_FOUND` | Resource not found |
+| `429` | `RATE_LIMIT_EXCEEDED` | Too many requests |
+| `500` | `INTERNAL_ERROR` | Server error |
+
+### Response Codes Summary
+
+| Status | Meaning |
+|--------|---------|
+| `200 OK` | Webhook processed successfully |
+| `201 Created` | Task was created |
+| `400 Bad Request` | Invalid payload format |
+| `401 Unauthorized` | Authentication failed |
+| `429 Too Many Requests` | Rate limited |
+| `500 Internal Server Error` | Server error |
